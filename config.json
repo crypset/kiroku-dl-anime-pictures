@@ -1,0 +1,99 @@
+{
+  "app": {
+    "downloadDir": "downloads",
+    "maxRetries": 3,
+    "retryDelay": 5000,
+    "logLevel": "info"
+  },
+  "browser": {
+    "headless": true,
+    "viewport": {
+      "width": 1280,
+      "height": 720
+    },
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "timeout": 30000,
+    "args": [
+      "--disable-blink-features=AutomationControlled",
+      "--no-sandbox",
+      "--disable-setuid-sandbox",
+      "--disable-infobars",
+      "--disable-extensions",
+      "--disable-dev-shm-usage"
+    ]
+  },
+  "download": {
+    "delay": 2000,
+    "pageDelay": 4000,
+    "searchDelay": 6000,
+    "maxConcurrent": 1,
+    "skipErrors": true,
+    "skipDownloaded": true,
+    "useDatabase": true
+  },
+  "database": {
+    "enabled": true,
+    "path": "./data/images.db",
+    "sync": true
+  },
+  "api": {
+    "baseUrl": "https://api.anime-pictures.net/api/v3/posts",
+    "downloadBaseUrl": "https://api.anime-pictures.net/pictures/download_image",
+    "defaultParams": {
+      "lang": "en",
+      "order_by": "date",
+      "page": 0
+    }
+  },
+  "settings": {
+    "defaultParams": {
+      "lang": "en",
+      "order_by": "date",
+      "page": 0
+    }
+  },
+  "comments": {
+    "directUrl": "Direct link to the API (if specified, tags are ignored). Example: https://anime-pictures.net/posts?page=0&search_tag=keqing+%28genshin+impact%29&order_by=date",
+    "tags": "Array of tags for search",
+    "deniedTags": "Array of prohibited tags",
+    "page": "Page number (starts with 0)",
+    "orderBy": "Sorting: date, rating, views, downloads",
+    "skipDownloaded": "Whether to skip already downloaded images (true/false). Can be overridden for each search separately",
+    "useDatabase": "Whether to use the database to track downloaded images"
+  },
+  "searches": [
+    {
+      "name": "Test1",
+      "url": "https://anime-pictures.net/posts?page=0&search_tag=shigureszku&lang=en",
+      "skipDownloaded": false
+    },
+    {
+      "name": "Keqing",
+      "url": "https://anime-pictures.net/posts?page=0&search_tag=keqing+%28genshin+impact%29&denied_tags=keqing+%28genshin+impact%29%7C%7Cganyu+%28genshin+impact%29%7C%7C&order_by=date&ldate=0&lang=en",
+      "skipDownloaded": true
+    },
+    {
+      "name": "Genshin Impact characters",
+      "tags": ["genshin impact", "1girl"],
+      "deniedTags": ["sfw"],
+      "page": 0,
+      "orderBy": "score",
+      "skipDownloaded": true
+    },
+    {
+      "name": "Аніме girls",
+      "tags": ["anime", "1girl", "solo"],
+      "deniedTags": ["male"],
+      "page": 0,
+      "orderBy": "date",
+      "skipDownloaded": true
+    },
+    {
+      "name": "Landscape images",
+      "tags": ["landscape", "scenery", "no humans"],
+      "page": 0,
+      "orderBy": "score",
+      "skipDownloaded": true
+    }
+  ]
+}
