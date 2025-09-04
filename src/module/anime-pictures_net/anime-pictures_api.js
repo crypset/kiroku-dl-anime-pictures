@@ -55,10 +55,12 @@ class AnimePicturesApi {
   }
 
   getFileExtension(contentType, originalFileName) {
+    // Спочатку перевіряємо оригінальне ім'я файлу
     if (originalFileName && path.extname(originalFileName)) {
       return path.extname(originalFileName);
     }
     
+    // Потім за content-type
     const extensions = {
       'png': '.png',
       'jpeg': '.jpeg', 
@@ -70,18 +72,20 @@ class AnimePicturesApi {
       if (contentType.includes(type)) return ext;
     }
     
-    return '.jpg';
+    return '.jpg'; // За замовчуванням
   }
 
-
   generateFileName(imageId, originalFileName, extension) {
-    const cleanOriginalName = originalFileName?.replace(/[<>:"/\\|?*]/g, "_");
+    if (!originalFileName) return `${imageId}${extension}`;
     
-    if (cleanOriginalName && cleanOriginalName !== `${imageId}${extension}`) {
-      return `${imageId}_${cleanOriginalName}`;
+    const cleanName = originalFileName.replace(/[<>:"/\\|?*]/g, "_");
+    
+    // Якщо оригінальне ім'я вже містить ID, просто повертаємо його
+    if (cleanName === `${imageId}${extension}`) {
+      return cleanName;
     }
     
-    return `${imageId}${extension}`;
+    return `${imageId}_${cleanName}`;
   }
 
   async checkFileExists(filePath) {
@@ -99,7 +103,7 @@ class AnimePicturesApi {
       await this.ensureDownloadDir();
       page = await this.context.newPage();
 
-      print(`Go to URL: ${url}`);
+      print(`Downloading from: ${url}`);
 
       await page.setExtraHTTPHeaders({
         "User-Agent": USERAGENT,
@@ -107,47 +111,43 @@ class AnimePicturesApi {
       });
 
       const response = await page.request.get(url, { timeout: BROWSER_TIMEOUT });
-      
-      print(`Response status: ${response.status()}`);
 
       if (!response.ok()) {
-        throw new Error(`HTTP error: ${response.status()}`);
+        throw new Error(`HTTP ${response.status()}: ${response.statusText()}`);
       }
 
       const contentType = response.headers()["content-type"];
       if (!contentType.includes("image")) {
-        const body = await response.text();
-        _error("Received non-image: " + body.slice(0, 500));
         throw new Error(`Expected image, got ${contentType}`);
       }
 
       const buffer = await response.body();
+      
+      // Отримуємо оригінальне ім'я файлу з заголовків
       const contentDisposition = response.headers()["content-disposition"];
+      const filenameMatch = contentDisposition?.match(/filename="(.+?)"/);
+      const originalFileName = filenameMatch?.[1] || null;
 
-      let originalFileName = null;
-      const match = contentDisposition?.match(/filename="(.+?)"/);
-      if (match?.[1]) {
-        originalFileName = match[1];
-      }
-
+      // Генеруємо ім'я файлу
       const extension = this.getFileExtension(contentType, originalFileName);
       const fileName = this.generateFileName(imageId, originalFileName, extension);
       const filePath = path.join(this.getDownloadPath(), fileName);
 
+      // Перевіряємо чи файл вже існує
       if (await this.checkFileExists(filePath)) {
         print(`File ${fileName} already exists, skipping`);
         return filePath;
       }
 
+      // Зберігаємо файл
       await fs.writeFile(filePath, buffer);
 
       const fileSizeMB = (buffer.length / (1024 * 1024)).toFixed(2);
       print(`Image saved: ${fileName} (${fileSizeMB} MB)`);
-      print(`Path: ${filePath}`);
 
       return filePath;
     } catch (error) {
-      _error("Error downloading image " + imageId + ": " + error.message);
+      _error(`Error downloading image ${imageId}: ${error.message}`);
       throw error;
     } finally {
       if (page) await page.close();

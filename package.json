@@ -1,6 +1,6 @@
 {
   "name": "kiroku-dl-anime-pictures",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "anime-pictures.net downloader",
   "main": "index.js",
   "scripts": {

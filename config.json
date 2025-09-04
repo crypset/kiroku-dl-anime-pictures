@@ -63,8 +63,36 @@
   },
   "searches": [
     {
+      "name": "Test1",
+      "url": "https://anime-pictures.net/posts?page=0&search_tag=shigureszku&lang=en",
+      "skipDownloaded": false
+    },
+    {
       "name": "Keqing",
-      "url": "https://anime-pictures.net/posts?page=0&search_tag=keqing+%28genshin+impact%29&order_by=date&ldate=0&lang=en",
+      "url": "https://anime-pictures.net/posts?page=0&search_tag=keqing+%28genshin+impact%29&denied_tags=keqing+%28genshin+impact%29%7C%7Cganyu+%28genshin+impact%29%7C%7C&order_by=date&ldate=0&lang=en",
+      "skipDownloaded": true
+    },
+    {
+      "name": "Genshin Impact characters",
+      "tags": ["genshin impact", "1girl"],
+      "deniedTags": ["sfw"],
+      "page": 0,
+      "orderBy": "score",
+      "skipDownloaded": true
+    },
+    {
+      "name": "Аніме girls",
+      "tags": ["anime", "1girl", "solo"],
+      "deniedTags": ["male"],
+      "page": 0,
+      "orderBy": "date",
+      "skipDownloaded": true
+    },
+    {
+      "name": "Landscape images",
+      "tags": ["landscape", "scenery", "no humans"],
+      "page": 0,
+      "orderBy": "score",
       "skipDownloaded": true
     }
   ]
