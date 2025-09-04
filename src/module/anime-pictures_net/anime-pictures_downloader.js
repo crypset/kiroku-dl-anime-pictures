@@ -38,7 +38,6 @@ class AnimePicturesDownloader {
       }
 
       this.api = new AnimePicturesApi(this.context);
-
       this.searchService = new SearchService({ searches: SEARCH_LIST });
 
       success("Initialization completed successfully");
@@ -48,11 +47,6 @@ class AnimePicturesDownloader {
     }
   }
 
-  /**
-   * Виконує завантаження за назвою пошуку
-   * @param {string} searchName - Назва пошуку
-   * @param {Object} options - Додаткові налаштування
-   */
   async downloadBySearchName(searchName, options = {}) {
     try {
       print(`Search execution: "${searchName}"`);
@@ -74,6 +68,25 @@ class AnimePicturesDownloader {
     }
   }
 
+  async getDownloadedImageIds(imageIds, searchName) {
+    if (!this.useDatabase) return new Set();
+
+    try {
+      const downloadedImages = await Downloaded_Image.findAll({
+        where: {
+          imageId: imageIds.map(id => id.toString()),
+          searchName: searchName,
+        },
+        attributes: ['imageId']
+      });
+      
+      return new Set(downloadedImages.map(img => parseInt(img.imageId)));
+    } catch (error) {
+      _error("Database batch verification error: " + error.message);
+      return new Set();
+    }
+  }
+
   async isImageDownloaded(imageId, searchName) {
     if (!this.useDatabase) return false;
 
@@ -91,12 +104,7 @@ class AnimePicturesDownloader {
     }
   }
 
-  async markImageAsDownloaded(
-    imageData,
-    filePath,
-    searchName,
-    status = "downloaded"
-  ) {
+  async markImageAsDownloaded(imageData, filePath, searchName, status = "downloaded") {
     if (!this.useDatabase) return;
 
     try {
@@ -118,51 +126,47 @@ class AnimePicturesDownloader {
     }
   }
 
-  /**
-   * Завантаження зображень з усіх сторінок
-   * @param {string} baseSearchUrl - Базовий URL для пошуку
-   * @param {Object} options - Налаштування
-   * @param {string} searchName - Назва пошуку для папки
-   */
-  async downloadImagesAllPages(
-    baseSearchUrl,
-    options = {},
-    searchName = "default"
-  ) {
+  async getSearchInfo(baseSearchUrl) {
+    const firstPageData = await this.api.fetchApiData(baseSearchUrl);
+    
+    if (!firstPageData?.posts?.length) {
+      throw new Error("No images found");
+    }
+
+    return {
+      data: firstPageData,
+      totalPages: firstPageData.max_pages || 1,
+      totalImages: firstPageData.posts_count
+    };
+  }
+
+  async downloadImagesAllPages(baseSearchUrl, options = {}, searchName = "default") {
     const { maxImages, delay, skipErrors, maxPages } = options;
 
     try {
       print(`Obtaining information about the number of pages...`);
 
-      const firstPageData = await this.api.getImagesList(baseSearchUrl);
+      const searchInfo = await this.getSearchInfo(baseSearchUrl);
+      const { data: firstPageData, totalPages, totalImages } = searchInfo;
 
-      if (!firstPageData?.posts?.length) {
-        _error("No images found");
-        return;
-      }
+      const pagesToProcess = maxPages ? Math.min(maxPages, totalPages) : totalPages;
 
-      const totalPages = firstPageData.max_pages || 1;
-      const pagesToProcess = maxPages
-        ? Math.min(maxPages, totalPages)
-        : totalPages;
-
-      print(`${firstPageData.posts_count} images found on ${totalPages} pages`);
-      print(`${pagesToProcess} pages will be processed`);
+      print(`${totalImages} images found on ${totalPages} pages`);
+      print(`${pagesToProcess + 1} pages will be processed`);
 
       let totalSuccessCount = 0;
       let totalErrorCount = 0;
       let totalSkippedCount = 0;
       let totalProcessedImages = 0;
 
-      for (let page = 0; page < pagesToProcess; page++) {
+      for (let page = 0; page < pagesToProcess + 1; page++) {
         print(`Processing page ${page + 1}/${pagesToProcess}`);
 
         try {
           const pageUrl = this.updateUrlPage(baseSearchUrl, page);
           print(`Page URL: ${pageUrl}`);
 
-          const pageData =
-            page === 0 ? firstPageData : await this.api.getImagesList(pageUrl);
+          const pageData = page === 0 ? firstPageData : await this.api.fetchApiData(pageUrl);
 
           if (!pageData?.posts?.length) {
             print(`There are no images on page ${page + 1}`);
@@ -170,28 +174,22 @@ class AnimePicturesDownloader {
           }
 
           let postsToProcess = pageData.posts;
-          if (
-            maxImages &&
-            totalProcessedImages + postsToProcess.length > maxImages
-          ) {
+          if (maxImages && totalProcessedImages + postsToProcess.length > maxImages) {
             const remaining = maxImages - totalProcessedImages;
             postsToProcess = postsToProcess.slice(0, remaining);
           }
 
-          print(
-            `${pageData.posts.length} images found on the page, ${postsToProcess.length} will be processed`
-          );
+          print(`${pageData.posts.length} images found on the page, ${postsToProcess.length} will be processed`);
 
-          const { successCount, errorCount, skippedCount } =
-            await this.downloadImagesFromPage(
-              postsToProcess,
-              page + 1,
-              pagesToProcess,
-              totalProcessedImages,
-              delay,
-              skipErrors,
-              searchName
-            );
+          const { successCount, errorCount, skippedCount } = await this.downloadImagesFromPage(
+            postsToProcess,
+            page + 1,
+            pagesToProcess,
+            totalProcessedImages,
+            delay,
+            skipErrors,
+            searchName
+          );
 
           totalSuccessCount += successCount;
           totalErrorCount += errorCount;
@@ -219,7 +217,6 @@ class AnimePicturesDownloader {
 
       success(`Download completed!`);
       success(`┌ Statistics:`);
-      success(`|   • Processed pages: ${Math.min(pagesToProcess, page + 1)}`);
       success(`|   • Total images: ${totalProcessedImages}`);
       success(`|   • Successfully downloaded: ${totalSuccessCount}`);
       success(`|   • Skipped: ${totalSkippedCount}`);
@@ -230,55 +227,51 @@ class AnimePicturesDownloader {
     }
   }
 
-  async downloadImagesFromPage(
-    posts,
-    currentPage,
-    totalPages,
-    startIndex,
-    delay,
-    skipErrors,
-    searchName
-  ) {
+  async downloadImagesFromPage(posts, currentPage, totalPages, startIndex, delay, skipErrors, searchName) {
     let successCount = 0;
     let errorCount = 0;
     let skippedCount = 0;
 
-    for (let i = 0; i < posts.length; i++) {
-      const picture = posts[i];
-      const globalIndex = startIndex + i + 1;
+    const shouldSkipDownloaded = this.getSkipDownloadedSetting(searchName);
+    let downloadedImageIds = new Set();
+
+    if (shouldSkipDownloaded) {
+      const allImageIds = posts.map(post => post.id);
+      downloadedImageIds = await this.getDownloadedImageIds(allImageIds, searchName);
+      
+      const alreadyDownloaded = posts.filter(post => downloadedImageIds.has(post.id));
+      if (alreadyDownloaded.length > 0) {
+        print(`Found ${alreadyDownloaded.length} already downloaded images on this page`);
+        skippedCount += alreadyDownloaded.length;
+      }
+    }
+
+    const postsToDownload = shouldSkipDownloaded 
+      ? posts.filter(post => !downloadedImageIds.has(post.id))
+      : posts;
+
+    print(`Will download ${postsToDownload.length} images from this page`);
+
+    for (let i = 0; i < postsToDownload.length; i++) {
+      const picture = postsToDownload[i];
+      const originalIndex = posts.findIndex(p => p.id === picture.id) + 1;
+      const globalIndex = startIndex + originalIndex;
 
       try {
-        print(
-          `[Page ${currentPage}/${totalPages}] [${i + 1}/${
-            posts.length
-          }] [Total: ${globalIndex}] Processing image ${picture.id}...`
-        );
+        print(`[Page ${currentPage}/${totalPages}] [${originalIndex}/${posts.length}] [Total: ${globalIndex}] Processing image ${picture.id}...`);
 
-        const pictureDetails = await this.api.getImageDetails(
+        const pictureDetails = await this.api.fetchApiData(
           `https://api.anime-pictures.net/api/v3/posts/${picture.id}?extra=similar_pictures&lang=en`
         );
 
         print("Fetched image details");
-
-        const shouldSkipDownloaded = this.getSkipDownloadedSetting(searchName);
-        if (
-          shouldSkipDownloaded &&
-          (await this.isImageDownloaded(picture.id, searchName))
-        ) {
-          print(`Image ${picture.id} is already downloaded, skipping`);
-          skippedCount++;
-          continue;
-        }
 
         await sleep(delay);
 
         const imageDownloadUrl = `https://api.anime-pictures.net/pictures/download_image/${pictureDetails.file_url}`;
         print(`Download URL: ${imageDownloadUrl}`);
 
-        const filePath = await this.api.downloadImage(
-          imageDownloadUrl,
-          picture.id
-        );
+        const filePath = await this.api.downloadImage(imageDownloadUrl, picture.id);
 
         await this.markImageAsDownloaded(pictureDetails, filePath, searchName);
 
@@ -293,10 +286,18 @@ class AnimePicturesDownloader {
         }
       }
 
-      if (i < posts.length - 1) {
+      if (i < postsToDownload.length - 1) {
         print(`Waiting ${delay}ms...`);
         await sleep(delay);
       }
+    }
+
+    const totalSkippedOnPage = posts.length - postsToDownload.length;
+    if (totalSkippedOnPage > 0) {
+      const skippedIds = posts
+        .filter(post => downloadedImageIds.has(post.id))
+        .map(post => post.id);
+      print(`Skipped already downloaded images: ${skippedIds.join(', ')}`);
     }
 
     return { successCount, errorCount, skippedCount };
@@ -313,11 +314,6 @@ class AnimePicturesDownloader {
     return urlObj.toString();
   }
 
-  /**
-   * Виконує кілька пошуків послідовно
-   * @param {Array} searchNames - Масив назв пошуків
-   * @param {Object} options - Налаштування завантаження
-   */
   async downloadMultipleSearches(searchNames, options = {}) {
     print(`Start loading: ${searchNames.length} searches...`);
 
@@ -328,7 +324,7 @@ class AnimePicturesDownloader {
       try {
         await this.downloadBySearchName(searchName, options);
       } catch (error) {
-        _error(`Search error"${searchName}":`, error.message);
+        _error(`Search error "${searchName}":`, error.message);
 
         if (!options.skipErrors) {
           throw error;
@@ -344,28 +340,6 @@ class AnimePicturesDownloader {
 
     success("All searches completed!");
   }
-
-  /**
-   * Виконує динамічний пошук з параметрами
-   * @param {Object} searchParams - Параметри пошуку
-   * @param {Object} options - Налаштування завантаження
-   */
-  // async downloadByParams(searchParams, options = {}) {
-  //   try {
-  //     console.log("🔍 Виконання динамічного пошуку...");
-
-  //     const folderName = searchParams.folderName || `dynamic_${Date.now()}`;
-  //     this.api.setSearchFolder(folderName);
-
-  //     const searchUrl = this.searchService.createDynamicSearch(searchParams);
-  //     console.log(`🌐 URL пошуку: ${searchUrl}`);
-
-  //     await this.downloadImagesAllPages(searchUrl, options, folderName);
-  //   } catch (error) {
-  //     console.error("❌ Помилка при динамічному пошуку:", error.message);
-  //     throw error;
-  //   }
-  // }
 
   showAvailableSearches() {
     const searches = this.searchService.getAvailableSearchNames();
